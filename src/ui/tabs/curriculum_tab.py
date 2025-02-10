@@ -1,11 +1,15 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                            QLabel, QLineEdit, QPushButton, QComboBox, QFrame)
+                            QLabel, QLineEdit, QPushButton, QComboBox, 
+                            QFrame, QProgressBar)
+from services.ai_service import AIService
+from .curriculum_worker import CurriculumWorker
 
 
 class CurriculumTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
+        self.ai_service = AIService()
         self.init_ui()
 
     def init_ui(self):
@@ -44,6 +48,23 @@ class CurriculumTab(QWidget):
         form_layout.addWidget(self.topic_input)
         form_layout.addWidget(self.expertise_label)
         form_layout.addWidget(self.expertise_combo)
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #3d3d3d;
+                border-radius: 5px;
+                text-align: center;
+                height: 4px;
+            }
+            QProgressBar::chunk {
+                background-color: #2ea043;
+            }
+        """)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.hide()
+        form_layout.addWidget(self.progress_bar)
+        
         form_layout.addWidget(self.start_curriculum_button)
         form_container.setLayout(form_layout)
         
@@ -55,19 +76,51 @@ class CurriculumTab(QWidget):
         self.start_curriculum_button.clicked.connect(self.handle_new_curriculum)
         self.topic_input.returnPressed.connect(self.handle_new_curriculum)  # Add Enter key support
 
+    def _enable_input(self, enabled: bool):
+        """Enable or disable input controls."""
+        self.topic_input.setEnabled(enabled)
+        self.expertise_combo.setEnabled(enabled)
+        self.start_curriculum_button.setEnabled(enabled)
+
+    def _show_error(self, error_message: str):
+        """Display an error in the UI."""
+        # TODO: Add proper error display
+        print(f"Error: {error_message}")
+        self.progress_bar.hide()
+        self._enable_input(True)
+
+    def _handle_curriculum_generated(self, curriculum: str):
+        """Handle the generated curriculum."""
+        topic = self.topic_input.text()
+        expertise = self.expertise_combo.currentText()
+
+        # Create learning session
+        self.parent.create_learning_session(topic, expertise, curriculum)
+        
+        # Add to history
+        self.parent.history_tab.add_curriculum(topic, expertise)
+        
+        # Reset UI
+        self.topic_input.clear()
+        self.progress_bar.hide()
+        self._enable_input(True)
+
     def handle_new_curriculum(self):
         topic = self.topic_input.text()
         expertise = self.expertise_combo.currentText()
-        if topic:
-            # Create a new learning session
-            placeholder_curriculum = self.generate_placeholder_curriculum(topic, expertise)
-            self.parent.create_learning_session(topic, expertise, placeholder_curriculum)
-            
-            # Add to history
-            self.parent.history_tab.add_curriculum(topic, expertise)
-            
-            # Clear input
-            self.topic_input.clear()
+        if not topic:
+            return
+
+        # Disable input and show progress
+        self._enable_input(False)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.show()
+
+        # Generate curriculum in background
+        self.worker = CurriculumWorker(self.ai_service, topic, expertise)
+        self.worker.finished.connect(self._handle_curriculum_generated)
+        self.worker.error.connect(self._show_error)
+        self.worker.start()
     
     def generate_placeholder_curriculum(self, topic, expertise):
         """Generate a placeholder curriculum until backend is implemented."""

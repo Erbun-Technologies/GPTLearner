@@ -1,7 +1,9 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QTextEdit, 
-                            QFrame, QScrollArea, QSplitter)
+                            QFrame, QScrollArea, QSplitter, QProgressBar)
 from PyQt5.QtCore import Qt
+from services.ai_service import AIService
+from .chat_worker import ChatWorker
 
 
 class LearningSessionTab(QWidget):
@@ -11,6 +13,8 @@ class LearningSessionTab(QWidget):
         self.topic = topic
         self.expertise_level = expertise_level
         self.curriculum = curriculum
+        self.chat_history = []
+        self.ai_service = AIService()
         self.init_ui()
 
     def init_ui(self):
@@ -85,6 +89,23 @@ class LearningSessionTab(QWidget):
         """)
         right_layout.addWidget(self.chat_display)
 
+        # Progress bar for loading state
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #3d3d3d;
+                border-radius: 5px;
+                text-align: center;
+                height: 4px;
+            }
+            QProgressBar::chunk {
+                background-color: #2ea043;
+            }
+        """)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.hide()
+        right_layout.addWidget(self.progress_bar)
+
         # Chat input area
         chat_input_layout = QHBoxLayout()
         self.chat_input = QLineEdit()
@@ -115,24 +136,55 @@ class LearningSessionTab(QWidget):
         self.chat_display.append("Assistant: Welcome to your learning session! I'm here to help you learn about "
                                f"{self.topic}. What would you like to know first?\n")
 
+    def _add_user_message(self, message: str):
+        """Add a user message to the chat display and history."""
+        self.chat_display.append(f"You: {message}\n")
+        self.chat_history.append({"role": "user", "content": message})
+
+    def _add_assistant_message(self, message: str):
+        """Add an assistant message to the chat display and history."""
+        self.chat_display.append(f"Assistant: {message}\n")
+        self.chat_history.append({"role": "assistant", "content": message})
+
+    def _show_error(self, error_message: str):
+        """Display an error message in the chat."""
+        self.chat_display.append(f"Error: {error_message}\n")
+        self.progress_bar.hide()
+        self._enable_input(True)
+
+    def _enable_input(self, enabled: bool):
+        """Enable or disable input controls."""
+        self.chat_input.setEnabled(enabled)
+        self.send_button.setEnabled(enabled)
+
     def handle_send(self):
         """Handle sending a message in the chat."""
         message = self.chat_input.text().strip()
         if not message:
             return
 
-        # Display user message
-        self.chat_display.append(f"You: {message}\n")
+        # Display user message and update history
+        self._add_user_message(message)
         
-        # Clear input
+        # Clear input and disable controls
         self.chat_input.clear()
+        self._enable_input(False)
         
-        # TODO: Integrate with backend for AI responses
-        # For now, just echo a placeholder response
-        response = f"Assistant: I understand you want to know about '{message}'. "
-        response += "Once the backend is integrated, I'll provide a detailed response "
-        response += "based on the curriculum and your learning progress.\n"
-        self.chat_display.append(response)
+        # Show progress bar
+        self.progress_bar.setRange(0, 0)  # Indeterminate mode
+        self.progress_bar.show()
+
+        # Create worker thread for AI response
+        self.worker = ChatWorker(self.ai_service, self.chat_history, self.curriculum)
+        self.worker.finished.connect(self._handle_ai_response)
+        self.worker.error.connect(self._show_error)
+        self.worker.start()
+
+    def _handle_ai_response(self, response: str):
+        """Handle the AI response."""
+        self._add_assistant_message(response)
+        self.progress_bar.hide()
+        self._enable_input(True)
         
         # Scroll to bottom
         self.chat_display.verticalScrollBar().setValue(
