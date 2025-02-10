@@ -1,5 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                            QLabel, QPushButton, QTextEdit, QFrame)
+                            QLabel, QPushButton, QTextBrowser, QFrame)
+from PyQt5.QtCore import Qt
+import markdown
 
 
 class CurriculumReviewTab(QWidget):
@@ -49,18 +51,24 @@ class CurriculumReviewTab(QWidget):
         """)
         content_layout = QVBoxLayout()
         
-        self.curriculum_content = QTextEdit()
+        self.curriculum_content = QTextBrowser()
         self.curriculum_content.setStyleSheet("""
-            QTextEdit {
+            QTextBrowser {
                 background-color: #1e1e1e;
                 color: #ffffff;
                 border: 1px solid #3d3d3d;
                 border-radius: 5px;
                 padding: 10px;
             }
+            QTextBrowser a {
+                color: #58a6ff;
+            }
         """)
+        self.curriculum_content.setOpenExternalLinks(True)
         self.curriculum_content.setPlaceholderText("Loading curriculum...")
-        self.curriculum_content.setReadOnly(False)  # Allow editing
+        self.curriculum_content.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+        )
         content_layout.addWidget(self.curriculum_content)
         
         content_container.setLayout(content_layout)
@@ -92,8 +100,78 @@ class CurriculumReviewTab(QWidget):
         self.modify_button.clicked.connect(self.save_changes)
 
     def set_curriculum_content(self, content):
-        """Update the curriculum content."""
-        self.curriculum_content.setPlainText(content)
+        """Update the curriculum content with markdown rendering."""
+        # Convert markdown to HTML with extensions
+        html = markdown.markdown(
+            content,
+            extensions=[
+                'markdown.extensions.fenced_code',
+                'markdown.extensions.tables',
+                'markdown.extensions.nl2br',
+                'markdown.extensions.sane_lists'
+            ]
+        )
+        
+        # Add comprehensive styling
+        styled_html = f"""
+        <style>
+            body {{
+                line-height: 1.6;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }}
+            h1 {{ 
+                color: #58a6ff;
+                font-size: 24px;
+                margin-top: 20px;
+                margin-bottom: 10px;
+                padding-bottom: 5px;
+                border-bottom: 1px solid #3d3d3d;
+            }}
+            h2 {{ 
+                color: #58a6ff;
+                font-size: 20px;
+                margin-top: 15px;
+                margin-bottom: 8px;
+            }}
+            h3 {{ 
+                color: #58a6ff;
+                font-size: 16px;
+                margin-top: 12px;
+                margin-bottom: 6px;
+            }}
+            p {{
+                margin: 8px 0;
+            }}
+            ul, ol {{
+                margin: 8px 0 8px 25px;
+                padding: 0;
+            }}
+            li {{
+                margin: 4px 0;
+            }}
+            li > ul, li > ol {{
+                margin: 4px 0 4px 20px;
+            }}
+            code {{
+                background-color: #2d2d2d;
+                padding: 2px 4px;
+                border-radius: 3px;
+                font-family: Monaco, "Courier New", monospace;
+            }}
+            pre {{
+                background-color: #2d2d2d;
+                padding: 12px;
+                border-radius: 5px;
+                overflow-x: auto;
+            }}
+            pre code {{
+                padding: 0;
+                background-color: transparent;
+            }}
+        </style>
+        {html}
+        """
+        self.curriculum_content.setHtml(styled_html)
 
     def save_changes(self):
         """Save modifications to the curriculum."""

@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
-                            QLabel, QLineEdit, QPushButton, QTextEdit, 
+                            QLabel, QLineEdit, QPushButton, QTextEdit, QTextBrowser,
                             QFrame, QScrollArea, QSplitter, QProgressBar)
+import markdown
 from PyQt5.QtCore import Qt
 from services.ai_service import AIService
 from .chat_worker import ChatWorker
@@ -50,18 +51,92 @@ class LearningSessionTab(QWidget):
         curriculum_label.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold;")
         curriculum_layout.addWidget(curriculum_label)
         
-        self.curriculum_view = QTextEdit()
+        self.curriculum_view = QTextBrowser()
         self.curriculum_view.setStyleSheet("""
-            QTextEdit {
+            QTextBrowser {
                 background-color: #1e1e1e;
                 color: #ffffff;
                 border: 1px solid #3d3d3d;
                 border-radius: 5px;
                 padding: 10px;
             }
+            QTextBrowser a {
+                color: #58a6ff;
+            }
         """)
-        self.curriculum_view.setPlainText(self.curriculum)
-        self.curriculum_view.setReadOnly(True)
+        self.curriculum_view.setOpenExternalLinks(True)
+        
+        # Convert markdown to HTML with extensions
+        html = markdown.markdown(
+            self.curriculum,
+            extensions=[
+                'markdown.extensions.fenced_code',
+                'markdown.extensions.tables',
+                'markdown.extensions.nl2br',
+                'markdown.extensions.sane_lists'
+            ]
+        )
+        
+        # Add comprehensive styling
+        styled_html = f"""
+        <style>
+            body {{
+                line-height: 1.6;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }}
+            h1 {{ 
+                color: #58a6ff;
+                font-size: 24px;
+                margin-top: 20px;
+                margin-bottom: 10px;
+                padding-bottom: 5px;
+                border-bottom: 1px solid #3d3d3d;
+            }}
+            h2 {{ 
+                color: #58a6ff;
+                font-size: 20px;
+                margin-top: 15px;
+                margin-bottom: 8px;
+            }}
+            h3 {{ 
+                color: #58a6ff;
+                font-size: 16px;
+                margin-top: 12px;
+                margin-bottom: 6px;
+            }}
+            p {{
+                margin: 8px 0;
+            }}
+            ul, ol {{
+                margin: 8px 0 8px 25px;
+                padding: 0;
+            }}
+            li {{
+                margin: 4px 0;
+            }}
+            li > ul, li > ol {{
+                margin: 4px 0 4px 20px;
+            }}
+            code {{
+                background-color: #2d2d2d;
+                padding: 2px 4px;
+                border-radius: 3px;
+                font-family: Monaco, "Courier New", monospace;
+            }}
+            pre {{
+                background-color: #2d2d2d;
+                padding: 12px;
+                border-radius: 5px;
+                overflow-x: auto;
+            }}
+            pre code {{
+                padding: 0;
+                background-color: transparent;
+            }}
+        </style>
+        {html}
+        """
+        self.curriculum_view.setHtml(styled_html)
         curriculum_layout.addWidget(self.curriculum_view)
         
         curriculum_container.setLayout(curriculum_layout)
