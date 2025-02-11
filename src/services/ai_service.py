@@ -3,16 +3,7 @@ import anthropic
 import logging
 from typing import List, Dict, Optional
 
-# Configure logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Create console handler with formatting
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logger.addHandler(ch)
 
 class AIService:
     """Service for interacting with Anthropic's Claude API."""

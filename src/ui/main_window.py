@@ -9,10 +9,10 @@ class MainWindow(QTabWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Agentic Learning Assistant")
-        self.resize(1000, 700)
         self.learning_sessions = {}  # Keep track of active learning sessions
         self.init_ui()
         apply_styles(self)
+        self.resize(1200, 900)
 
     def init_ui(self):
         # Initialize permanent tabs
