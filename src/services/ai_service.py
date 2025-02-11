@@ -24,6 +24,7 @@ class AIService:
         )
         self.model = "claude-3-opus-20240229"  # Using the latest model
         self.max_tokens = 4000  # Default max tokens
+        self.curriculum = ""  # Add this line to store curriculum
         logger.debug(f"AIService initialized with model={self.model}, max_tokens={self.max_tokens}")
 
     def generate_curriculum(self, topic: str, expertise_level: str) -> str:
@@ -71,49 +72,39 @@ class AIService:
             logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             raise ValueError(f"Unexpected error: {str(e)}")
 
-    def chat(self, 
-             messages: List[Dict[str, str]], 
-             curriculum: str,
-             system_prompt: Optional[str] = None) -> str:
+    def chat(self, messages: List[Dict[str, str]], curriculum: str) -> str:
         """Handle chat interactions with curriculum context.
         
         Args:
             messages: List of message objects with role and content
             curriculum: The curriculum context to include
-            system_prompt: Optional system prompt to override default
             
         Returns:
             The assistant's response text
-            
-        Raises:
-            ValueError: If there is an error calling the API
         """
-        try:
-            logger.debug(f"Starting chat interaction with {len(messages)} messages")
-            logger.debug(f"Curriculum length: {len(curriculum)} chars")
-            
-            if system_prompt is None:
-                logger.debug("Using default system prompt")
-                system_prompt = (
-                    "You are an expert tutor helping a student learn according to their curriculum. "
-                    "Always reference the curriculum when appropriate, and guide the student through "
-                    "their learning journey in a structured way. Be encouraging and supportive, "
-                    "while ensuring accurate and in-depth knowledge transfer."
-                )
+        self.curriculum = curriculum  # Store curriculum for use in chat
+        logger.debug(f"Starting chat interaction with {len(messages)} messages")
+        logger.debug(f"Curriculum length: {len(curriculum)} chars")
+        logger.debug("Using default system prompt")
 
-            # Combine system prompt, curriculum context, and chat history
-            full_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "system", "content": f"Current curriculum:\n{curriculum}"},
-                *messages
-            ]
-            
-            logger.debug("Making chat API request to Anthropic")
+        # Extract system messages and user/assistant messages
+        system_prompt = ("You are an expert tutor helping a student learn according to their curriculum. "
+                        "Always reference the curriculum when appropriate, and guide the student through "
+                        "their learning journey in a structured way. Be encouraging and supportive, "
+                        "while ensuring accurate and in-depth knowledge transfer.")
+        
+        curriculum_content = f"Current curriculum:\n{curriculum}"
+
+        try:
             response = self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
+                model="claude-3-opus-20240229",
+                max_tokens=4000,
                 temperature=0.7,
-                messages=full_messages
+                system=f"{system_prompt}\n\n{curriculum_content}",  # Combined system prompts as top-level parameter
+                messages=[
+                    # Filter out system messages and only include user/assistant messages
+                    msg for msg in messages if msg["role"] != "system"
+                ]
             )
             
             logger.debug(f"Received chat response with ID: {response.id}")
