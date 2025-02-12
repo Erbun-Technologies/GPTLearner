@@ -1,10 +1,120 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
-                            QLabel, QLineEdit, QPushButton, QTextEdit, QTextBrowser,
-                            QFrame, QScrollArea, QSplitter, QProgressBar)
+                            QLabel, QLineEdit, QPushButton, QTextBrowser,
+                            QFrame, QSplitter, QProgressBar, QListWidget,
+                            QStyledItemDelegate, QStyle, QListWidgetItem)
+from PyQt5.QtCore import Qt, QSize, QRect, QPoint, QRectF
+from PyQt5.QtGui import QTextDocument, QPalette, QColor, QPainter, QPainterPath
 import markdown
-from PyQt5.QtCore import Qt
+from datetime import datetime
 from services.ai_service import AIService
 from .chat_worker import ChatWorker
+
+
+class MessageDelegate(QStyledItemDelegate):
+    """Custom delegate for rendering chat messages."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.doc = QTextDocument()
+        self.max_width = 600  # Maximum message width
+
+    def paint(self, painter: QPainter, option, index):
+        """Paint the message item."""
+        # Get message data
+        msg_data = index.data(Qt.UserRole)
+        if not msg_data:
+            return
+
+        msg_type = msg_data.get('type', '')
+        content = msg_data.get('content', '')
+        timestamp = msg_data.get('timestamp', '')
+        
+        # Prepare painter
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Calculate message width
+        available_width = int(option.rect.width() * 0.85)  # 85% of available width
+        msg_width = int(min(self.max_width, available_width))
+        
+        # Prepare text document for content
+        self.doc.setTextWidth(msg_width - 30)  # Subtract padding
+        self.doc.setHtml(f"<span style='color: white;'>{content}</span>")
+        
+        # Calculate heights
+        msg_height = int(self.doc.size().height())
+        total_height = int(msg_height + 25)  # Add space for timestamp
+        
+        # Create message bubble path
+        rect = option.rect
+        bubble_rect = QRectF(rect)
+        if msg_type == 'user':
+            bubble_rect.setRight(rect.right() - 10)
+            bubble_rect.setLeft(bubble_rect.right() - msg_width)
+        else:
+            bubble_rect.setLeft(rect.left() + 10)
+            bubble_rect.setRight(bubble_rect.left() + msg_width)
+        bubble_rect.setHeight(msg_height + 20)
+        
+        path = QPainterPath()
+        if msg_type == 'user':
+            path.addRoundedRect(bubble_rect, 15, 15)
+            painter.setBrush(QColor("#58a6ff"))
+        elif msg_type == 'assistant':
+            path.addRoundedRect(bubble_rect, 15, 15)
+            painter.setBrush(QColor("#3d3d3d"))
+        else:  # system message
+            painter.setBrush(Qt.transparent)
+        
+        painter.setPen(Qt.NoPen)
+        painter.drawPath(path)
+        
+        # Draw message content
+        content_rect = QRect(
+            int(bubble_rect.left() + 15),
+            int(bubble_rect.top() + 10),
+            int(bubble_rect.width() - 30),
+            int(msg_height)
+        )
+        painter.translate(content_rect.topLeft())
+        self.doc.drawContents(painter)
+        painter.translate(-content_rect.topLeft())
+        
+        # Draw timestamp
+        if timestamp and msg_type != 'system':
+            painter.setPen(QColor("#808080"))
+            timestamp_rect = QRect(
+                int(bubble_rect.left()),
+                int(bubble_rect.bottom() + 4),
+                int(bubble_rect.width()),
+                15
+            )
+            if msg_type == 'user':
+                painter.drawText(timestamp_rect, Qt.AlignRight, timestamp)
+            else:
+                painter.drawText(timestamp_rect, Qt.AlignLeft, timestamp)
+        
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        """Calculate the size needed for the message."""
+        msg_data = index.data(Qt.UserRole)
+        if not msg_data:
+            return QSize()
+        
+        # Calculate width
+        available_width = option.rect.width() * 0.85
+        msg_width = min(self.max_width, available_width)
+        
+        # Calculate height
+        self.doc.setTextWidth(msg_width - 30)
+        self.doc.setHtml(msg_data.get('content', ''))
+        msg_height = self.doc.size().height()
+        
+        # Add padding and timestamp space and convert to integer
+        total_height = int(msg_height + 35)
+        
+        return QSize(int(option.rect.width()), total_height)
 
 
 class LearningSessionTab(QWidget):
@@ -150,18 +260,40 @@ class LearningSessionTab(QWidget):
         right_layout = QVBoxLayout()
         right_layout.setContentsMargins(10, 0, 0, 0)
 
-        # Chat display
-        self.chat_display = QTextEdit()
-        self.chat_display.setReadOnly(True)
+        # Chat display with modern styling
+        self.chat_display = QListWidget()
+        self.chat_display.setFrameStyle(QFrame.NoFrame)
+        self.chat_display.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.chat_display.setWordWrap(True)
         self.chat_display.setStyleSheet("""
-            QTextEdit {
+            QListWidget {
                 background-color: #2b2b2b;
-                color: #ffffff;
                 border: 1px solid #3d3d3d;
                 border-radius: 5px;
                 padding: 10px;
             }
+            QScrollBar:vertical {
+                border: none;
+                background: #2b2b2b;
+                width: 10px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #3d3d3d;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
         """)
+        
+        # Set custom delegate for message rendering
+        self.message_delegate = MessageDelegate(self.chat_display)
+        self.chat_display.setItemDelegate(self.message_delegate)
+        
         right_layout.addWidget(self.chat_display)
 
         # Progress bar for loading state
@@ -174,25 +306,70 @@ class LearningSessionTab(QWidget):
                 height: 4px;
             }
             QProgressBar::chunk {
-                background-color: #2ea043;
+                background-color: #58a6ff;
             }
         """)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.hide()
         right_layout.addWidget(self.progress_bar)
 
-        # Chat input area
+        # Chat input area with modern styling
+        input_container = QFrame()
+        input_container.setStyleSheet("""
+            QFrame {
+                background-color: #2b2b2b;
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
         chat_input_layout = QHBoxLayout()
+        chat_input_layout.setSpacing(10)
+        
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("Type your message here...")
         self.chat_input.setMinimumHeight(40)
+        self.chat_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #3d3d3d;
+                border-radius: 20px;
+                padding: 0 15px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #58a6ff;
+            }
+        """)
+        
         self.send_button = QPushButton("Send")
         self.send_button.setMinimumHeight(40)
         self.send_button.setMinimumWidth(100)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background-color: #58a6ff;
+                border-radius: 20px;
+                padding: 0 20px;
+                color: white;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #6cb0ff;
+            }
+            QPushButton:pressed {
+                background-color: #4a8cd9;
+            }
+            QPushButton:disabled {
+                background-color: #2c4159;
+                color: rgba(255, 255, 255, 0.5);
+            }
+        """)
         
         chat_input_layout.addWidget(self.chat_input)
         chat_input_layout.addWidget(self.send_button)
-        right_layout.addLayout(chat_input_layout)
+        input_container.setLayout(chat_input_layout)
+        right_layout.addWidget(input_container)
 
         right_widget.setLayout(right_layout)
         splitter.addWidget(right_widget)
@@ -206,31 +383,60 @@ class LearningSessionTab(QWidget):
         # Connect signals
         self.send_button.clicked.connect(self.handle_send)
         self.chat_input.returnPressed.connect(self.handle_send)
+        self.chat_input.textChanged.connect(self._handle_input_change)
 
-        # Add welcome message
-        self.chat_display.append("Assistant: Welcome to your learning session! I'm here to help you learn about "
-                               f"{self.topic}. What would you like to know first?\n")
+        # Add welcome messages
+        self._add_system_message("Welcome to your learning session!")
+        self._add_assistant_message("I'm here to help you learn about " + self.topic + ". What would you like to know first?")
+
+    def _add_message_item(self, content: str, msg_type: str):
+        """Add a message item to the chat display."""
+        timestamp = datetime.now().strftime("%H:%M")
+        
+        # Create list item with message data
+        item = QListWidgetItem()
+        item.setData(Qt.UserRole, {
+            'type': msg_type,
+            'content': content,
+            'timestamp': timestamp
+        })
+        
+        # Add to list widget
+        self.chat_display.addItem(item)
+        self.chat_display.scrollToBottom()
+        
+        # Force layout update
+        self.chat_display.updateGeometry()
 
     def _add_user_message(self, message: str):
         """Add a user message to the chat display and history."""
-        self.chat_display.append(f"You: {message}\n")
+        self._add_message_item(message, 'user')
         self.chat_history.append({"role": "user", "content": message})
 
     def _add_assistant_message(self, message: str):
         """Add an assistant message to the chat display and history."""
-        self.chat_display.append(f"Assistant: {message}\n")
+        self._add_message_item(message, 'assistant')
         self.chat_history.append({"role": "assistant", "content": message})
+
+    def _add_system_message(self, message: str):
+        """Add a system message to the chat display."""
+        self._add_message_item(message, 'system')
 
     def _show_error(self, error_message: str):
         """Display an error message in the chat."""
-        self.chat_display.append(f"Error: {error_message}\n")
+        self._add_message_item(f"Error: {error_message}", 'system')
         self.progress_bar.hide()
         self._enable_input(True)
+
+    def _handle_input_change(self, text: str):
+        """Handle changes to the input field."""
+        # Enable/disable send button based on input
+        self.send_button.setEnabled(bool(text.strip()))
 
     def _enable_input(self, enabled: bool):
         """Enable or disable input controls."""
         self.chat_input.setEnabled(enabled)
-        self.send_button.setEnabled(enabled)
+        self.send_button.setEnabled(enabled and bool(self.chat_input.text().strip()))
 
     def handle_send(self):
         """Handle sending a message in the chat."""
@@ -260,8 +466,3 @@ class LearningSessionTab(QWidget):
         self._add_assistant_message(response)
         self.progress_bar.hide()
         self._enable_input(True)
-        
-        # Scroll to bottom
-        self.chat_display.verticalScrollBar().setValue(
-            self.chat_display.verticalScrollBar().maximum()
-        )
