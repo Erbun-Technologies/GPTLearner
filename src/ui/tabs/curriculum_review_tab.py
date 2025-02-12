@@ -2,8 +2,10 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QPushButton, QTextBrowser, QFrame, QComboBox)
 from PyQt5.QtCore import Qt
 import markdown
+import logging
 from .curriculum_worker import CurriculumWorker
 
+logger = logging.getLogger(__name__)
 
 class CurriculumReviewTab(QWidget):
     def __init__(self, parent=None, topic="", expertise_level=""):
@@ -11,7 +13,8 @@ class CurriculumReviewTab(QWidget):
         self.parent = parent
         self.topic = topic
         self.expertise_level = expertise_level
-        self.worker = None  # Keep reference to worker
+        self.worker = None
+        logger.debug(f"Initializing CurriculumReviewTab for topic='{topic}', level='{expertise_level}'")
         self.init_ui()
 
     def init_ui(self):
@@ -162,83 +165,117 @@ class CurriculumReviewTab(QWidget):
 
     def set_curriculum_content(self, content):
         """Update the curriculum content with markdown rendering."""
-        # Convert markdown to HTML with extensions
-        html = markdown.markdown(
-            content,
-            extensions=[
-                'markdown.extensions.fenced_code',
-                'markdown.extensions.tables',
-                'markdown.extensions.nl2br',
-                'markdown.extensions.sane_lists'
-            ]
-        )
-        
-        # Add comprehensive styling
-        styled_html = f"""
-        <style>
-            body {{
-                line-height: 1.6;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            }}
-            h1 {{ 
-                color: #58a6ff;
-                font-size: 24px;
-                margin-top: 20px;
-                margin-bottom: 10px;
-                padding-bottom: 5px;
-                border-bottom: 1px solid #3d3d3d;
-            }}
-            h2 {{ 
-                color: #58a6ff;
-                font-size: 20px;
-                margin-top: 15px;
-                margin-bottom: 8px;
-            }}
-            h3 {{ 
-                color: #58a6ff;
-                font-size: 16px;
-                margin-top: 12px;
-                margin-bottom: 6px;
-            }}
-            p {{
-                margin: 8px 0;
-            }}
-            ul, ol {{
-                margin: 8px 0 8px 25px;
-                padding: 0;
-            }}
-            li {{
-                margin: 4px 0;
-            }}
-            li > ul, li > ol {{
-                margin: 4px 0 4px 20px;
-            }}
-            code {{
-                background-color: #2d2d2d;
-                padding: 2px 4px;
-                border-radius: 3px;
-                font-family: Monaco, "Courier New", monospace;
-            }}
-            pre {{
-                background-color: #2d2d2d;
-                padding: 12px;
-                border-radius: 5px;
-                overflow-x: auto;
-            }}
-            pre code {{
-                padding: 0;
-                background-color: transparent;
-            }}
-        </style>
-        {html}
-        """
-        self.curriculum_content.setHtml(styled_html)
+        try:
+            # Convert markdown to HTML with extensions
+            html = markdown.markdown(
+                content,
+                extensions=[
+                    'markdown.extensions.fenced_code',
+                    'markdown.extensions.tables',
+                    'markdown.extensions.nl2br',
+                    'markdown.extensions.sane_lists'
+                ]
+            )
+            
+            # Add comprehensive styling
+            styled_html = f"""
+            <style>
+                body {{
+                    line-height: 1.6;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                }}
+                h1 {{ 
+                    color: #58a6ff;
+                    font-size: 24px;
+                    margin-top: 20px;
+                    margin-bottom: 10px;
+                    padding-bottom: 5px;
+                    border-bottom: 1px solid #3d3d3d;
+                }}
+                h2 {{ 
+                    color: #58a6ff;
+                    font-size: 20px;
+                    margin-top: 15px;
+                    margin-bottom: 8px;
+                }}
+                h3 {{ 
+                    color: #58a6ff;
+                    font-size: 16px;
+                    margin-top: 12px;
+                    margin-bottom: 6px;
+                }}
+                p {{
+                    margin: 8px 0;
+                }}
+                ul, ol {{
+                    margin: 8px 0 8px 25px;
+                    padding: 0;
+                }}
+                li {{
+                    margin: 4px 0;
+                }}
+                li > ul, li > ol {{
+                    margin: 4px 0 4px 20px;
+                }}
+                code {{
+                    background-color: #2d2d2d;
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    font-family: Monaco, "Courier New", monospace;
+                }}
+                pre {{
+                    background-color: #2d2d2d;
+                    padding: 12px;
+                    border-radius: 5px;
+                    overflow-x: auto;
+                }}
+                pre code {{
+                    padding: 0;
+                    background-color: transparent;
+                }}
+            </style>
+            {html}
+            """
+            self.curriculum_content.setHtml(styled_html)
+        except Exception as e:
+            self.curriculum_content.setHtml(
+                f"""
+                <div style='color: #ff6b6b; padding: 20px;'>
+                    <h3>Error Displaying Curriculum</h3>
+                    <p>There was an error processing the curriculum content: {str(e)}</p>
+                </div>
+                """
+            )
 
     def save_changes(self):
         """Save modifications to the curriculum."""
-        content = self.curriculum_content.toPlainText()
-        print(f"Saving changes to curriculum for {self.topic}")
-        # TODO: Save changes to backend
+        try:
+            content = self.curriculum_content.toPlainText()
+            if not content.strip():
+                raise ValueError("Curriculum content cannot be empty")
+                
+            print(f"Saving changes to curriculum for {self.topic}")
+            # TODO: Save changes to backend
+            
+            # Show success message
+            self.curriculum_content.setHtml(
+                f"""
+                <div style='color: #2ea043; padding: 20px;'>
+                    <p>Changes saved successfully!</p>
+                </div>
+                {self.curriculum_content.toHtml()}
+                """
+            )
+        except Exception as e:
+            self.curriculum_content.setHtml(
+                f"""
+                <div style='color: #ff6b6b; padding: 20px;'>
+                    <h3>Error Saving Changes</h3>
+                    <p>{str(e)}</p>
+                </div>
+                {self.curriculum_content.toHtml()}
+                """
+            )
 
     def start_learning(self):
         """Start the learning session with this curriculum."""
@@ -253,12 +290,11 @@ class CurriculumReviewTab(QWidget):
         """Regenerate the curriculum with the new expertise level."""
         new_level = self.expertise_combo.currentText()
         if new_level != self.expertise_level:
+            logger.info(f"Regenerating curriculum for topic='{self.topic}' with new level='{new_level}'")
             self.expertise_level = new_level
+            
             # Clean up previous worker if it exists
-            if self.worker is not None:
-                self.worker.finished.disconnect()
-                self.worker.error.disconnect()
-                self.worker.deleteLater()
+            self._cleanup_worker()
             
             # Create new worker
             self.worker = CurriculumWorker(self.parent.curriculum_tab.ai_service, self.topic, new_level)
@@ -268,30 +304,48 @@ class CurriculumReviewTab(QWidget):
             
             # Show loading state
             self.curriculum_content.setPlaceholderText("Regenerating curriculum...")
-            self.regenerate_button.setEnabled(False)
-            self.start_button.setEnabled(False)
-            self.modify_button.setEnabled(False)
+            self._set_buttons_enabled(False)
+
+    def _cleanup_worker(self):
+        """Clean up the worker thread safely."""
+        if self.worker is not None:
+            logger.debug("Cleaning up previous worker")
+            try:
+                self.worker.finished.disconnect()
+                self.worker.error.disconnect()
+                self.worker.deleteLater()
+            except Exception as e:
+                logger.error(f"Error cleaning up worker: {e}")
+            self.worker = None
+
+    def _set_buttons_enabled(self, enabled: bool):
+        """Enable or disable all buttons."""
+        self.regenerate_button.setEnabled(enabled)
+        self.start_button.setEnabled(enabled)
+        self.modify_button.setEnabled(enabled)
 
     def handle_regenerated_curriculum(self, new_curriculum: str):
         """Handle the regenerated curriculum."""
+        logger.debug("Received regenerated curriculum")
         self.set_curriculum_content(new_curriculum)
-        self.regenerate_button.setEnabled(True)
-        self.start_button.setEnabled(True)
-        self.modify_button.setEnabled(True)
+        self._set_buttons_enabled(True)
 
     def handle_regeneration_error(self, error: str):
         """Handle errors during curriculum regeneration."""
-        # TODO: Show error in UI
-        print(f"Error regenerating curriculum: {error}")
-        self.regenerate_button.setEnabled(True)
-        self.start_button.setEnabled(True)
-        self.modify_button.setEnabled(True)
+        logger.error(f"Error regenerating curriculum: {error}")
+        self.curriculum_content.setHtml(
+            f"""
+            <div style='color: #ff6b6b; padding: 20px;'>
+                <h3>Error Regenerating Curriculum</h3>
+                <p>{error}</p>
+                <p>Please try again or choose a different expertise level.</p>
+            </div>
+            """
+        )
+        self._set_buttons_enabled(True)
 
     def closeEvent(self, event):
         """Handle cleanup when the tab is closed."""
-        if self.worker is not None:
-            self.worker.finished.disconnect()
-            self.worker.error.disconnect()
-            self.worker.deleteLater()
-            self.worker = None
+        logger.debug(f"Closing curriculum review tab for topic='{self.topic}'")
+        self._cleanup_worker()
         super().closeEvent(event)

@@ -1,15 +1,19 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QLineEdit, QPushButton, QComboBox, 
-                            QFrame, QProgressBar)
+                            QFrame, QProgressBar, QMessageBox)
 from services.ai_service import AIService
 from .curriculum_worker import CurriculumWorker
+import logging
 
+logger = logging.getLogger(__name__)
 
 class CurriculumTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
         self.ai_service = AIService()
+        self.worker = None  # Keep reference to worker
+        logger.debug("Initializing CurriculumTab")
         self.init_ui()
 
     def init_ui(self):
@@ -84,32 +88,58 @@ class CurriculumTab(QWidget):
 
     def _show_error(self, error_message: str):
         """Display an error in the UI."""
-        # TODO: Add proper error display
-        print(f"Error: {error_message}")
+        logger.error(f"Error in curriculum generation: {error_message}")
+        QMessageBox.critical(
+            self,
+            "Error Generating Curriculum",
+            f"An error occurred while generating the curriculum:\n\n{error_message}",
+            QMessageBox.Ok
+        )
         self.progress_bar.hide()
         self._enable_input(True)
 
     def _handle_curriculum_generated(self, curriculum: str):
         """Handle the generated curriculum."""
-        topic = self.topic_input.text()
-        expertise = self.expertise_combo.currentText()
+        try:
+            topic = self.topic_input.text()
+            expertise = self.expertise_combo.currentText()
+            logger.info(f"Curriculum generated successfully for topic='{topic}', level='{expertise}'")
 
-        # Create review tab
-        self.parent.create_curriculum_review(topic, expertise, curriculum)
-        
-        # Add to history
-        self.parent.history_tab.add_curriculum(topic, expertise)
-        
-        # Reset UI
-        self.topic_input.clear()
-        self.progress_bar.hide()
-        self._enable_input(True)
+            # Create review tab
+            self.parent.create_curriculum_review(topic, expertise, curriculum)
+            
+            # Add to history
+            self.parent.history_tab.add_curriculum(topic, expertise)
+            
+            # Reset UI
+            self.topic_input.clear()
+            self.progress_bar.hide()
+            self._enable_input(True)
+        except Exception as e:
+            logger.error(f"Error handling generated curriculum: {str(e)}", exc_info=True)
+            self._show_error(f"Error setting up curriculum: {str(e)}")
 
     def handle_new_curriculum(self):
-        topic = self.topic_input.text()
+        """Handle request for new curriculum generation."""
+        topic = self.topic_input.text().strip()
         expertise = self.expertise_combo.currentText()
+        
         if not topic:
+            QMessageBox.warning(
+                self,
+                "Missing Topic",
+                "Please enter a topic for the curriculum.",
+                QMessageBox.Ok
+            )
             return
+
+        logger.info(f"Starting curriculum generation for topic='{topic}', level='{expertise}'")
+        
+        # Clean up previous worker if it exists
+        if self.worker is not None:
+            self.worker.finished.disconnect()
+            self.worker.error.disconnect()
+            self.worker.deleteLater()
 
         # Disable input and show progress
         self._enable_input(False)
@@ -121,7 +151,17 @@ class CurriculumTab(QWidget):
         self.worker.finished.connect(self._handle_curriculum_generated)
         self.worker.error.connect(self._show_error)
         self.worker.start()
-    
+
+    def closeEvent(self, event):
+        """Handle cleanup when the tab is closed."""
+        if self.worker is not None:
+            logger.debug("Cleaning up worker in CurriculumTab closeEvent")
+            self.worker.finished.disconnect()
+            self.worker.error.disconnect()
+            self.worker.deleteLater()
+            self.worker = None
+        super().closeEvent(event)
+
     def generate_placeholder_curriculum(self, topic, expertise):
         """Generate a placeholder curriculum until backend is implemented."""
         return f"""# Learning Plan: {topic}
