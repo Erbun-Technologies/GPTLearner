@@ -42,18 +42,34 @@ class AIService:
             system_prompt = (
                 "You are an expert curriculum designer. Create a detailed, structured curriculum "
                 "that is precisely tailored to the specified expertise level. Be concise but thorough. "
-                "Focus on practical, actionable learning steps."
+                "Focus on practical, actionable learning steps. Use proper markdown formatting with "
+                "# for main sections and - for subtopics."
             )
             
             # Create a focused user message
             message_content = (
                 f"Create a curriculum for learning {topic} at a {expertise_level} level.\n\n"
-                "Structure it with these sections:\n"
-                "1. Learning Objectives (3-5 key objectives)\n"
-                "2. Prerequisites (essential background knowledge)\n"
-                "3. Main Topics (with brief subtopics)\n"
-                "4. Practical Exercises\n"
-                "5. Key Resources\n\n"
+                "Use this exact format:\n\n"
+                "# Learning Objectives\n"
+                "- Objective 1\n"
+                "- Objective 2\n"
+                "- Objective 3\n\n"
+                "# Prerequisites\n"
+                "- Prerequisite 1\n"
+                "- Prerequisite 2\n\n"
+                "# Main Topics\n"
+                "- Topic 1\n"
+                "  - Subtopic 1.1\n"
+                "  - Subtopic 1.2\n"
+                "- Topic 2\n"
+                "  - Subtopic 2.1\n"
+                "  - Subtopic 2.2\n\n"
+                "# Practical Exercises\n"
+                "- Exercise 1\n"
+                "- Exercise 2\n\n"
+                "# Key Resources\n"
+                "- Resource 1\n"
+                "- Resource 2\n\n"
                 "Make all content specifically appropriate for {expertise_level} level learners."
             )
 

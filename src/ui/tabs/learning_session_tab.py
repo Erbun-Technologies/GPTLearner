@@ -1,13 +1,213 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QTextBrowser,
                             QFrame, QSplitter, QProgressBar, QListWidget,
-                            QStyledItemDelegate, QStyle, QListWidgetItem)
+                            QStyledItemDelegate, QStyle, QListWidgetItem,
+                            QTreeWidget, QTreeWidgetItem)
 from PyQt5.QtCore import Qt, QSize, QRect, QPoint, QRectF
-from PyQt5.QtGui import QTextDocument, QPalette, QColor, QPainter, QPainterPath
+from PyQt5.QtGui import QTextDocument, QPalette, QColor, QPainter, QPainterPath, QIcon
 import markdown
 from datetime import datetime
 from services.ai_service import AIService
 from .chat_worker import ChatWorker
+
+
+class CurriculumTreeView(QTreeWidget):
+    """Interactive curriculum view with progress tracking."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        self.progress = {}  # Track progress for each item
+        
+    def init_ui(self):
+        """Initialize the tree view UI."""
+        self.setHeaderHidden(True)
+        self.setAnimated(True)
+        self.setStyleSheet("""
+            QTreeWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #3d3d3d;
+                border-radius: 5px;
+                padding: 10px;
+            }
+            QTreeWidget::item {
+                padding: 8px;
+                border-radius: 4px;
+            }
+            QTreeWidget::item:hover {
+                background-color: #2d2d2d;
+            }
+            QTreeWidget::item:selected {
+                background-color: #2c4159;
+                color: #ffffff;
+            }
+            QTreeWidget::branch {
+                background-color: transparent;
+            }
+            QTreeWidget::branch:has-children:!has-siblings:closed,
+            QTreeWidget::branch:closed:has-children:has-siblings {
+                image: url(none);
+                border-image: none;
+                padding-top: 2px;
+            }
+            QTreeWidget::branch:open:has-children:!has-siblings,
+            QTreeWidget::branch:open:has-children:has-siblings {
+                image: url(none);
+                border-image: none;
+                padding-top: 2px;
+            }
+            QTreeWidget::branch:has-children:!has-siblings:closed::indicator,
+            QTreeWidget::branch:closed:has-children:has-siblings::indicator {
+                position: absolute;
+                content: "+";
+                color: #58a6ff;
+            }
+            QTreeWidget::branch:open:has-children:!has-siblings::indicator,
+            QTreeWidget::branch:open:has-children:has-siblings::indicator {
+                position: absolute;
+                content: "-";
+                color: #58a6ff;
+            }
+            QTreeWidget::branch:has-siblings {
+                border-left: 1px solid #3d3d3d;
+            }
+            QTreeWidget::branch:!has-children:!has-siblings:adjoins-item {
+                border-image: none;
+            }
+        """)
+        
+    def parse_curriculum(self, curriculum: str):
+        """Parse markdown curriculum into tree structure with progress tracking."""
+        print(f"Parsing curriculum content: {curriculum[:200]}...")  # Debug print
+        self.clear()
+        self.progress.clear()
+        
+        # Parse markdown to extract structure
+        lines = curriculum.split('\n')
+        current_items = {}  # Level -> Parent item mapping
+        current_level = 0
+        current_indent = 0
+        
+        for line in lines:
+            # Skip empty lines
+            if not line.strip():
+                continue
+            
+            # Calculate indentation level
+            indent = len(line) - len(line.lstrip())
+            if indent > current_indent:
+                current_level += 1
+            elif indent < current_indent:
+                current_level = max(1, current_level - 1)
+            current_indent = indent
+            
+            # Clean the line
+            line = line.strip()
+            
+            # Calculate heading level and text
+            level = current_level
+            text = line.strip()
+            
+            if line.startswith('#'):
+                level = 1  # All headers are top level
+                text = line.lstrip('#').strip()
+            elif line.startswith('-') or line.startswith('*'):
+                text = line.lstrip('-').lstrip('*').strip()
+            elif line[0].isdigit() and '.' in line:
+                text = line.split('.', 1)[1].strip()
+            
+            print(f"Processing line: indent={indent}, level={level}, text={text}")  # Debug print
+                
+            # Create tree item
+            item = QTreeWidgetItem()
+            item.setText(0, text)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.Unchecked)
+            
+            # Store in progress tracking
+            self.progress[text] = {
+                'completed': False,
+                'item': item,
+                'level': level
+            }
+            
+            # Add to appropriate parent
+            if level == 1 or not current_items:
+                # Top level item
+                print(f"Adding top level item: {text}")  # Debug print
+                self.addTopLevelItem(item)
+                current_items = {1: item}
+            else:
+                # Find appropriate parent
+                parent_level = level - 1
+                while parent_level > 0 and parent_level not in current_items:
+                    parent_level -= 1
+                
+                if parent_level > 0 and parent_level in current_items:
+                    print(f"Adding child item: {text} to parent: {current_items[parent_level].text(0)}")  # Debug print
+                    current_items[parent_level].addChild(item)
+                    current_items[level] = item
+                else:
+                    # If no parent found, add as top level item
+                    print(f"No parent found, adding as top level: {text}")  # Debug print
+                    self.addTopLevelItem(item)
+                    current_items = {1: item}
+            
+        print(f"Total items added: {len(self.progress)}")  # Debug print
+        self.expandAll()
+        self.update_progress()
+        
+    def update_progress(self):
+        """Update progress indicators for all items."""
+        total_items = len(self.progress)
+        completed_items = sum(1 for info in self.progress.values() if info['completed'])
+        overall_progress = (completed_items / total_items) * 100 if total_items > 0 else 0
+        
+        # Update individual items
+        for text, info in self.progress.items():
+            item = info['item']
+            if info['completed']:
+                item.setIcon(0, self.style().standardIcon(QStyle.SP_DialogApplyButton))
+                item.setForeground(0, QColor('#2ea043'))
+            else:
+                item.setIcon(0, QIcon())
+                item.setForeground(0, QColor('#ffffff'))
+                
+        return overall_progress
+        
+    def mark_completed(self, text: str):
+        """Mark a curriculum item as completed."""
+        if text in self.progress:
+            self.progress[text]['completed'] = True
+            self.update_progress()
+            
+    def get_section_content(self, text: str) -> str:
+        """Get the detailed content for a section."""
+        if text in self.progress:
+            item = self.progress[text]['item']
+            content = []
+            child_count = item.childCount()
+            
+            content.append(f"# {text}")
+            
+            # Add description if it exists
+            description = item.data(0, Qt.UserRole)
+            if description:
+                content.append(description)
+            
+            # Add child items
+            if child_count > 0:
+                content.append("\nSubtopics:")
+                for i in range(child_count):
+                    child = item.child(i)
+                    content.append(f"- {child.text(0)}")
+                    child_desc = child.data(0, Qt.UserRole)
+                    if child_desc:
+                        content.append(f"  {child_desc}")
+                
+            return "\n".join(content)
+        return ""
 
 
 class MessageDelegate(QStyledItemDelegate):
@@ -146,7 +346,7 @@ class LearningSessionTab(QWidget):
         header.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold;")
         left_layout.addWidget(header)
 
-        # Curriculum view
+        # Curriculum container
         curriculum_container = QFrame()
         curriculum_container.setStyleSheet("""
             QFrame {
@@ -157,97 +357,57 @@ class LearningSessionTab(QWidget):
         """)
         curriculum_layout = QVBoxLayout()
         
+        # Header with progress
+        header_layout = QHBoxLayout()
         curriculum_label = QLabel("Curriculum")
         curriculum_label.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold;")
-        curriculum_layout.addWidget(curriculum_label)
+        header_layout.addWidget(curriculum_label)
         
-        self.curriculum_view = QTextBrowser()
-        self.curriculum_view.setStyleSheet("""
+        self.progress_label = QLabel("0%")
+        self.progress_label.setStyleSheet("color: #58a6ff; font-size: 14px;")
+        header_layout.addWidget(self.progress_label)
+        header_layout.addStretch()
+        curriculum_layout.addLayout(header_layout)
+        
+        # Progress bar
+        self.curriculum_progress = QProgressBar()
+        self.curriculum_progress.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #3d3d3d;
+                border-radius: 5px;
+                text-align: center;
+                height: 4px;
+                background-color: #1e1e1e;
+            }
+            QProgressBar::chunk {
+                background-color: #58a6ff;
+            }
+        """)
+        self.curriculum_progress.setTextVisible(False)
+        curriculum_layout.addWidget(self.curriculum_progress)
+        
+        # Tree view for curriculum
+        self.curriculum_tree = CurriculumTreeView()
+        self.curriculum_tree.itemClicked.connect(self._handle_section_click)
+        curriculum_layout.addWidget(self.curriculum_tree)
+        
+        # Section content view
+        self.section_content = QTextBrowser()
+        self.section_content.setStyleSheet("""
             QTextBrowser {
                 background-color: #1e1e1e;
                 color: #ffffff;
                 border: 1px solid #3d3d3d;
                 border-radius: 5px;
                 padding: 10px;
+                margin-top: 10px;
             }
             QTextBrowser a {
                 color: #58a6ff;
             }
         """)
-        self.curriculum_view.setOpenExternalLinks(True)
-        
-        # Convert markdown to HTML with extensions
-        html = markdown.markdown(
-            self.curriculum,
-            extensions=[
-                'markdown.extensions.fenced_code',
-                'markdown.extensions.tables',
-                'markdown.extensions.nl2br',
-                'markdown.extensions.sane_lists'
-            ]
-        )
-        
-        # Add comprehensive styling
-        styled_html = f"""
-        <style>
-            body {{
-                line-height: 1.6;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            }}
-            h1 {{ 
-                color: #58a6ff;
-                font-size: 24px;
-                margin-top: 20px;
-                margin-bottom: 10px;
-                padding-bottom: 5px;
-                border-bottom: 1px solid #3d3d3d;
-            }}
-            h2 {{ 
-                color: #58a6ff;
-                font-size: 20px;
-                margin-top: 15px;
-                margin-bottom: 8px;
-            }}
-            h3 {{ 
-                color: #58a6ff;
-                font-size: 16px;
-                margin-top: 12px;
-                margin-bottom: 6px;
-            }}
-            p {{
-                margin: 8px 0;
-            }}
-            ul, ol {{
-                margin: 8px 0 8px 25px;
-                padding: 0;
-            }}
-            li {{
-                margin: 4px 0;
-            }}
-            li > ul, li > ol {{
-                margin: 4px 0 4px 20px;
-            }}
-            code {{
-                background-color: #2d2d2d;
-                padding: 2px 4px;
-                border-radius: 3px;
-                font-family: Monaco, "Courier New", monospace;
-            }}
-            pre {{
-                background-color: #2d2d2d;
-                padding: 12px;
-                border-radius: 5px;
-                overflow-x: auto;
-            }}
-            pre code {{
-                padding: 0;
-                background-color: transparent;
-            }}
-        </style>
-        {html}
-        """
-        self.curriculum_view.setHtml(styled_html)
-        curriculum_layout.addWidget(self.curriculum_view)
+        self.section_content.setMaximumHeight(200)
+        curriculum_layout.addWidget(self.section_content)
         
         curriculum_container.setLayout(curriculum_layout)
         left_layout.addWidget(curriculum_container)
@@ -389,6 +549,10 @@ class LearningSessionTab(QWidget):
         self._add_system_message("Welcome to your learning session!")
         self._add_assistant_message("I'm here to help you learn about " + self.topic + ". What would you like to know first?")
 
+        # Parse and display curriculum
+        self.curriculum_tree.parse_curriculum(self.curriculum)
+        self._update_progress(0)
+
     def _add_message_item(self, content: str, msg_type: str):
         """Add a message item to the chat display."""
         timestamp = datetime.now().strftime("%H:%M")
@@ -466,3 +630,44 @@ class LearningSessionTab(QWidget):
         self._add_assistant_message(response)
         self.progress_bar.hide()
         self._enable_input(True)
+
+    def _handle_section_click(self, item: QTreeWidgetItem, column: int):
+        """Handle clicking on a curriculum section."""
+        text = item.text(0)
+        content = self.curriculum_tree.get_section_content(text)
+        if content:
+            # Convert to HTML with styling
+            html = markdown.markdown(content)
+            styled_html = f"""
+            <style>
+                body {{
+                    color: #ffffff;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                }}
+                h1 {{ 
+                    color: #58a6ff;
+                    font-size: 18px;
+                    margin: 0 0 10px 0;
+                }}
+                ul {{
+                    margin: 0;
+                    padding-left: 20px;
+                }}
+                li {{
+                    color: #cccccc;
+                    margin: 5px 0;
+                }}
+            </style>
+            {html}
+            """
+            self.section_content.setHtml(styled_html)
+            
+            # Mark as completed when clicked
+            self.curriculum_tree.mark_completed(text)
+            progress = self.curriculum_tree.update_progress()
+            self._update_progress(progress)
+            
+    def _update_progress(self, progress: float):
+        """Update progress indicators."""
+        self.curriculum_progress.setValue(int(progress))
+        self.progress_label.setText(f"{int(progress)}%")
