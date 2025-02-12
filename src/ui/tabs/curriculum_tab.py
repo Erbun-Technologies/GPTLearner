@@ -94,8 +94,8 @@ class CurriculumTab(QWidget):
         topic = self.topic_input.text()
         expertise = self.expertise_combo.currentText()
 
-        # Create learning session
-        self.parent.create_learning_session(topic, expertise, curriculum)
+        # Create review tab
+        self.parent.create_curriculum_review(topic, expertise, curriculum)
         
         # Add to history
         self.parent.history_tab.add_curriculum(topic, expertise)

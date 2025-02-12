@@ -1,7 +1,8 @@
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                            QLabel, QPushButton, QTextBrowser, QFrame)
+                            QLabel, QPushButton, QTextBrowser, QFrame, QComboBox)
 from PyQt5.QtCore import Qt
 import markdown
+from .curriculum_worker import CurriculumWorker
 
 
 class CurriculumReviewTab(QWidget):
@@ -10,6 +11,7 @@ class CurriculumReviewTab(QWidget):
         self.parent = parent
         self.topic = topic
         self.expertise_level = expertise_level
+        self.worker = None  # Keep reference to worker
         self.init_ui()
 
     def init_ui(self):
@@ -21,24 +23,6 @@ class CurriculumReviewTab(QWidget):
         header = QLabel(f"Review Curriculum: {self.topic}")
         header.setStyleSheet("color: #ffffff; font-size: 18px; font-weight: bold;")
         layout.addWidget(header)
-
-        # Info section
-        info_container = QFrame()
-        info_container.setStyleSheet("""
-            QFrame {
-                background-color: #2b2b2b;
-                border-radius: 10px;
-                padding: 15px;
-            }
-        """)
-        info_layout = QVBoxLayout()
-        
-        level_label = QLabel(f"Level: {self.expertise_level}")
-        level_label.setStyleSheet("color: #ffffff; font-size: 14px;")
-        info_layout.addWidget(level_label)
-        
-        info_container.setLayout(info_layout)
-        layout.addWidget(info_container)
 
         # Curriculum content
         content_container = QFrame()
@@ -74,9 +58,87 @@ class CurriculumReviewTab(QWidget):
         content_container.setLayout(content_layout)
         layout.addWidget(content_container)
 
-        # Buttons
-        button_layout = QHBoxLayout()
+        # Info section with expertise level
+        info_container = QFrame()
+        info_container.setStyleSheet("""
+            QFrame {
+                background-color: #2b2b2b;
+                border-radius: 10px;
+                padding: 12px;
+            }
+        """)
+        info_layout = QHBoxLayout()
+        info_layout.setSpacing(10)
         
+        # Level selection group
+        level_group = QHBoxLayout()
+        level_group.setSpacing(8)
+        
+        level_header = QLabel("Expertise Level:")
+        level_header.setStyleSheet("color: #58a6ff; font-size: 13px; font-weight: bold;")
+        level_group.addWidget(level_header)
+        
+        self.expertise_combo = QComboBox()
+        self.expertise_combo.addItems(["Beginner", "Intermediate", "Advanced"])
+        self.expertise_combo.setCurrentText(self.expertise_level)
+        self.expertise_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #3d3d3d;
+                border-radius: 5px;
+                padding: 5px 10px;
+                min-width: 120px;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid #ffffff;
+                margin-right: 10px;
+            }
+        """)
+        level_group.addWidget(self.expertise_combo)
+        
+        self.regenerate_button = QPushButton("Regenerate")
+        self.regenerate_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2ea043;
+                padding: 5px 15px;
+            }
+            QPushButton:hover {
+                background-color: #3fb950;
+            }
+        """)
+        self.regenerate_button.clicked.connect(self.regenerate_curriculum)
+        level_group.addWidget(self.regenerate_button)
+        
+        info_layout.addLayout(level_group)
+        
+        # Level description
+        level_descriptions = {
+            "Beginner": "Suitable for those new to the subject with no prior knowledge.",
+            "Intermediate": "For learners with basic understanding seeking to deepen their knowledge.",
+            "Advanced": "Designed for experienced learners ready for complex concepts and applications."
+        }
+        self.level_description = QLabel(level_descriptions[self.expertise_level])
+        self.level_description.setStyleSheet("color: #808080; font-size: 12px; font-style: italic;")
+        self.level_description.setWordWrap(True)
+        info_layout.addWidget(self.level_description, 1)  # Give description more space
+        
+        # Connect combo box change to update description
+        self.expertise_combo.currentTextChanged.connect(
+            lambda text: self.level_description.setText(level_descriptions[text])
+        )
+        
+        info_container.setLayout(info_layout)
+        layout.addWidget(info_container)
+
+        # Bottom buttons
+        button_layout = QHBoxLayout()
         self.modify_button = QPushButton("Save Changes")
         self.start_button = QPushButton("Start Learning")
         self.start_button.setStyleSheet("""
@@ -90,7 +152,6 @@ class CurriculumReviewTab(QWidget):
         
         button_layout.addWidget(self.modify_button)
         button_layout.addWidget(self.start_button)
-        
         layout.addLayout(button_layout)
         
         self.setLayout(layout)
@@ -181,6 +242,56 @@ class CurriculumReviewTab(QWidget):
 
     def start_learning(self):
         """Start the learning session with this curriculum."""
-        # Create a new learning session tab
-        self.parent.create_learning_session(self.topic, self.expertise_level, 
-                                         self.curriculum_content.toPlainText())
+        # Create a new learning session tab with the current curriculum content
+        self.parent.create_learning_session(
+            self.topic, 
+            self.expertise_level,
+            self.curriculum_content.toPlainText()
+        )
+
+    def regenerate_curriculum(self):
+        """Regenerate the curriculum with the new expertise level."""
+        new_level = self.expertise_combo.currentText()
+        if new_level != self.expertise_level:
+            self.expertise_level = new_level
+            # Clean up previous worker if it exists
+            if self.worker is not None:
+                self.worker.finished.disconnect()
+                self.worker.error.disconnect()
+                self.worker.deleteLater()
+            
+            # Create new worker
+            self.worker = CurriculumWorker(self.parent.curriculum_tab.ai_service, self.topic, new_level)
+            self.worker.finished.connect(self.handle_regenerated_curriculum)
+            self.worker.error.connect(self.handle_regeneration_error)
+            self.worker.start()
+            
+            # Show loading state
+            self.curriculum_content.setPlaceholderText("Regenerating curriculum...")
+            self.regenerate_button.setEnabled(False)
+            self.start_button.setEnabled(False)
+            self.modify_button.setEnabled(False)
+
+    def handle_regenerated_curriculum(self, new_curriculum: str):
+        """Handle the regenerated curriculum."""
+        self.set_curriculum_content(new_curriculum)
+        self.regenerate_button.setEnabled(True)
+        self.start_button.setEnabled(True)
+        self.modify_button.setEnabled(True)
+
+    def handle_regeneration_error(self, error: str):
+        """Handle errors during curriculum regeneration."""
+        # TODO: Show error in UI
+        print(f"Error regenerating curriculum: {error}")
+        self.regenerate_button.setEnabled(True)
+        self.start_button.setEnabled(True)
+        self.modify_button.setEnabled(True)
+
+    def closeEvent(self, event):
+        """Handle cleanup when the tab is closed."""
+        if self.worker is not None:
+            self.worker.finished.disconnect()
+            self.worker.error.disconnect()
+            self.worker.deleteLater()
+            self.worker = None
+        super().closeEvent(event)
